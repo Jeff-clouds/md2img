@@ -1,0 +1,391 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Markdown → PNG</title>
+    <meta name="description" content="纯前端将 Markdown 渲染为图片 PNG" />
+
+    <!-- TailwindCSS with typography plugin -->
+    <script src="https://cdn.tailwindcss.com?plugins=typography"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              brand: {
+                50: '#eff6ff', 100: '#dbeafe', 200: '#bfdbfe', 300: '#93c5fd',
+                400: '#60a5fa', 500: '#3b82f6', 600: '#2563eb', 700: '#1d4ed8',
+                800: '#1e40af', 900: '#1e3a8a',
+              },
+            },
+          },
+        },
+      };
+    </script>
+
+    <!-- Highlight.js for code blocks (theme switched at runtime) -->
+    <link id="hljs-theme" rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/atom-one-light.min.css" />
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <!-- Markdown + sanitize -->
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.6/dist/purify.min.js"></script>
+
+    <!-- Export DOM to image -->
+    <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.min.js"></script>
+
+    <style>
+      ::-webkit-scrollbar { width: 10px; height: 10px; }
+      ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 8px; }
+      ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+      .export-shadow { box-shadow: 0 10px 25px rgba(0,0,0,.12), 0 8px 10px rgba(0,0,0,.06); }
+
+      /* Code block colors via CSS variables (theme controlled) */
+      :root { --code-bg: #f5f7ff; --code-fg: #1f2937; --code-border: #e5e7eb; }
+      .prose pre { background-color: var(--code-bg); border: 1px solid var(--code-border); border-radius: 0.5rem; }
+      .prose pre code { background: transparent; color: var(--code-fg); }
+    </style>
+  </head>
+  <body class="min-h-screen bg-slate-50 text-slate-800">
+    <header class="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-slate-200">
+      <div class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between">
+        <h1 class="text-xl font-semibold">Markdown → PNG</h1>
+        <div class="text-xs text-slate-500">纯前端 · 本地运行 · 支持代码高亮</div>
+      </div>
+    </header>
+
+    <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 grid gap-6 lg:grid-cols-2">
+      <!-- Left: Controls -->
+      <section aria-label="输入与设置" class="space-y-4">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
+          <label for="md-input" class="block text-sm font-medium text-slate-700">Markdown 文本</label>
+          <textarea id="md-input" class="w-full h-64 md:h-80 rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500 font-mono text-sm p-3" placeholder="# 欢迎使用\n\n- 支持 GFM\n- 代码块高亮\n- 数学公式可作为纯文本渲染\n\n```js\nconsole.log('Hello world');\n```\n"></textarea>
+
+          <div class="flex items-center justify-between">
+            <div class="text-xs text-slate-500">实时预览在右侧</div>
+            <button id="btn-fill-demo" class="text-xs text-brand-700 hover:text-brand-800">填充示例</button>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 p-4 grid gap-4 sm:grid-cols-2">
+          <div class="col-span-2">
+            <h2 class="text-sm font-medium text-slate-700">定制信息</h2>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600">作者</label>
+            <input id="author" type="text" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500" placeholder="例如：张三" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600">日期</label>
+            <input id="date" type="date" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500" />
+          </div>
+
+          <div class="flex items-center gap-3">
+            <input id="show-author" type="checkbox" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" checked />
+            <label for="show-author" class="text-sm text-slate-700">显示作者</label>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="show-date" type="checkbox" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" checked />
+            <label for="show-date" class="text-sm text-slate-700">显示日期</label>
+          </div>
+          <div class="flex items-center gap-3">
+            <input id="show-words" type="checkbox" class="rounded border-slate-300 text-brand-600 focus:ring-brand-500" checked />
+            <label for="show-words" class="text-sm text-slate-700">显示字数</label>
+          </div>
+        </div>
+
+        <div class="bg-white rounded-xl border border-slate-200 p-4 grid gap-4 sm:grid-cols-2">
+          <div class="col-span-2">
+            <h2 class="text-sm font-medium text-slate-700">导出设置</h2>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600">主题</label>
+            <select id="theme" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500">
+              <option value="light-soft" selected>轻质主题（亮色）</option>
+              <option value="github-dark">GitHub（暗色）</option>
+              <option value="twitter-dark">Twitter（暗色）</option>
+              <option value="gradient-light">极浅渐变（浅色）</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600">图片宽度（px）</label>
+            <input id="img-width" type="number" min="400" step="10" value="1000" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500" />
+          </div>
+          <div>
+            <label class="block text-sm text-slate-600">边距（px）</label>
+            <input id="img-padding" type="number" min="0" step="2" value="24" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500" />
+          </div>
+          <div class="sm:col-span-2 flex flex-wrap gap-3">
+            <button id="btn-generate" class="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2">生成 PNG</button>
+            <button id="btn-copy" class="inline-flex items-center gap-2 rounded-lg bg-slate-700 hover:bg-slate-800 text-white px-4 py-2">复制到剪贴板</button>
+            <a id="btn-download" class="inline-flex items-center gap-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2" download="markdown.png" href="#">下载 PNG</a>
+          </div>
+          <div class="sm:col-span-2 text-xs text-slate-500">
+            说明：复制到剪贴板功能需要 HTTPS 或浏览器权限；若失败请改用下载。
+          </div>
+        </div>
+      </section>
+
+      <!-- Right: Preview / export area -->
+      <section aria-label="预览与导出">
+        <div class="bg-white rounded-xl border border-slate-200 p-4">
+          <div class="text-sm font-medium text-slate-700 mb-3">导出预览</div>
+          <div class="overflow-auto">
+            <div id="export-surface-wrapper" class="mx-auto">
+              <div id="export-surface" class="export-shadow mx-auto rounded-xl">
+                <div id="export-padding" class="p-6">
+                  <div id="meta" class="flex flex-wrap items-center justify-between text-sm text-slate-500">
+                    <div id="meta-left" class="flex items-center gap-4">
+                      <span id="meta-author" class="hidden"></span>
+                      <span id="meta-date" class="hidden"></span>
+                      <span id="meta-words" class="hidden"></span>
+                    </div>
+                  </div>
+                  <article id="rendered" class="prose prose-slate max-w-none mt-4"></article>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-8 text-center text-xs text-slate-400">
+      本页无需服务器，保存本地后直接用浏览器打开即可。
+    </footer>
+
+    <script>
+      const $ = (sel) => document.querySelector(sel);
+
+      // Elements
+      const mdInput = $('#md-input');
+      const authorInput = $('#author');
+      const dateInput = $('#date');
+      const showAuthor = $('#show-author');
+      const showDate = $('#show-date');
+      const showWords = $('#show-words');
+      const widthInput = $('#img-width');
+      const paddingInput = $('#img-padding');
+      const btnGenerate = $('#btn-generate');
+      const btnCopy = $('#btn-copy');
+      const btnDownload = $('#btn-download');
+      const btnFillDemo = $('#btn-fill-demo');
+      const themeSelect = $('#theme');
+      const hljsLink = document.getElementById('hljs-theme');
+
+      const wrapper = $('#export-surface-wrapper');
+      const surface = $('#export-surface');
+      const paddingBox = $('#export-padding');
+      const rendered = $('#rendered');
+      const meta = $('#meta');
+      const metaAuthor = $('#meta-author');
+      const metaDate = $('#meta-date');
+      const metaWords = $('#meta-words');
+
+      // Initialize date to today
+      const today = new Date();
+      const yyyy = today.getFullYear();
+      const mm = String(today.getMonth() + 1).padStart(2, '0');
+      const dd = String(today.getDate()).padStart(2, '0');
+      dateInput.value = `${yyyy}-${mm}-${dd}`;
+
+      // Configure marked + highlight.js
+      marked.setOptions({
+        gfm: true,
+        breaks: true,
+        headerIds: true,
+        mangle: false,
+        highlight(code, lang) {
+          try {
+            if (lang && hljs.getLanguage(lang)) {
+              return hljs.highlight(code, { language: lang }).value;
+            }
+            return hljs.highlightAuto(code).value;
+          } catch (e) {
+            return code;
+          }
+        },
+      });
+
+      // Themes
+      const THEMES = {
+        'light-soft': {
+          hljs: 'atom-one-light.min.css',
+          codeBg: '#f5f7ff',
+          codeFg: '#1f2937',
+          codeBorder: '#e5e7eb',
+          surface: { backgroundColor: '#f8fafc' },
+          bgColorOnly: '#f8fafc',
+          dark: false,
+        },
+        'github-dark': {
+          hljs: 'github-dark.min.css',
+          codeBg: '#161b22',  // slightly lighter than surface for separation
+          codeFg: '#c9d1d9',
+          codeBorder: '#30363d',
+          surface: { backgroundColor: '#0d1117' },
+          bgColorOnly: '#0d1117',
+          dark: true,
+        },
+        'twitter-dark': {
+          hljs: 'atom-one-dark.min.css',
+          codeBg: '#1a1f24',  // lighter than twitter dark surface
+          codeFg: '#e6edf3',
+          codeBorder: '#22303c',
+          surface: { backgroundColor: '#0f1419' },
+          bgColorOnly: '#0f1419',
+          dark: true,
+        },
+        'gradient-light': {
+          hljs: 'xcode.min.css',
+          codeBg: '#f6f8fa',
+          codeFg: '#0b254b',
+          codeBorder: '#e5e7eb',
+          surface: { background: 'linear-gradient(180deg, #ffffff 0%, #f7fbff 60%, #edf5ff 100%)' },
+          bgColorOnly: undefined, // let gradient render naturally
+          dark: false,
+        },
+      };
+
+      let currentTheme = THEMES['light-soft'];
+      function applyTheme(name) {
+        const t = THEMES[name] || THEMES['light-soft'];
+        currentTheme = t;
+        if (hljsLink) {
+          hljsLink.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${t.hljs}`;
+        }
+        // Update code colors
+        document.documentElement.style.setProperty('--code-bg', t.codeBg);
+        document.documentElement.style.setProperty('--code-fg', t.codeFg);
+        document.documentElement.style.setProperty('--code-border', t.codeBorder || '#e5e7eb');
+        // Apply export surface background (color or gradient)
+        surface.style.background = '';
+        surface.style.backgroundColor = '';
+        if (t.surface && t.surface.background) surface.style.background = t.surface.background;
+        if (t.surface && t.surface.backgroundColor) surface.style.backgroundColor = t.surface.backgroundColor;
+        // Toggle dark prose
+        rendered.classList.toggle('prose-invert', !!t.dark);
+        // Tune metadata color for readability
+        meta.style.color = t.dark ? '#94a3b8' : '#64748b';
+        applyExportStyles();
+        render();
+      }
+
+      function updateMetadata(text) {
+        const charCount = (text || '').replace(/[\s\u200B-\u200D\uFEFF]/g, '').length;
+        metaAuthor.textContent = authorInput.value ? `作者：${authorInput.value}` : '';
+        metaDate.textContent = dateInput.value ? `日期：${dateInput.value}` : '';
+        metaWords.textContent = `字数：${charCount}`;
+        metaAuthor.classList.toggle('hidden', !showAuthor.checked || !authorInput.value);
+        metaDate.classList.toggle('hidden', !showDate.checked || !dateInput.value);
+        metaWords.classList.toggle('hidden', !showWords.checked);
+      }
+
+      function render() {
+        const raw = mdInput.value || '';
+        const safeHtml = DOMPurify.sanitize(marked.parse(raw));
+        rendered.innerHTML = safeHtml;
+        document.querySelectorAll('#rendered pre code').forEach((el) => {
+          try { hljs.highlightElement(el); } catch (e) {}
+        });
+        updateMetadata(raw);
+      }
+
+      function applyExportStyles() {
+        const width = Math.max(400, Number(widthInput.value || 1000));
+        const pad = Math.max(0, Number(paddingInput.value || 24));
+        surface.style.width = width + 'px';
+        paddingBox.style.padding = pad + 'px';
+      }
+
+      async function generatePngBlob() {
+        applyExportStyles();
+        await new Promise((r) => setTimeout(r, 30));
+        const pixelRatio = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 2)));
+        const width = surface.offsetWidth;
+        const height = surface.offsetHeight;
+        const opts = { pixelRatio, width, height, style: { transform: 'none' }, cacheBust: true };
+        if (currentTheme && currentTheme.bgColorOnly) {
+          opts.backgroundColor = currentTheme.bgColorOnly;
+        }
+        return await htmlToImage.toBlob(surface, opts);
+      }
+
+      async function generateAndDownload() {
+        try {
+          btnGenerate.disabled = true;
+          btnGenerate.textContent = '生成中…';
+          const blob = await generatePngBlob();
+          if (!blob) throw new Error('生成失败');
+          const url = URL.createObjectURL(blob);
+          btnDownload.href = url;
+          btnDownload.download = makeFilename();
+          btnDownload.click();
+          setTimeout(() => URL.revokeObjectURL(url), 30000);
+        } catch (err) {
+          alert('生成 PNG 失败：' + (err && err.message ? err.message : err));
+          console.error(err);
+        } finally {
+          btnGenerate.disabled = false;
+          btnGenerate.textContent = '生成 PNG';
+        }
+      }
+
+      async function copyToClipboard() {
+        try {
+          btnCopy.disabled = true;
+          btnCopy.textContent = '复制中…';
+          const blob = await generatePngBlob();
+          if (!blob) throw new Error('生成失败');
+          if (!('clipboard' in navigator)) throw new Error('浏览器不支持剪贴板');
+          await navigator.clipboard.write([ new ClipboardItem({ 'image/png': blob }) ]);
+          btnCopy.textContent = '已复制 ✓';
+          setTimeout(() => (btnCopy.textContent = '复制到剪贴板'), 1200);
+        } catch (err) {
+          alert('复制失败：' + (err && err.message ? err.message : err));
+          console.error(err);
+          btnCopy.textContent = '复制失败';
+          setTimeout(() => (btnCopy.textContent = '复制到剪贴板'), 1200);
+        } finally {
+          btnCopy.disabled = false;
+        }
+      }
+
+      function makeFilename() {
+        const titleMatch = (mdInput.value || '').match(/^\s*#\s+(.+)$/m);
+        const base = titleMatch ? titleMatch[1].trim() : 'markdown';
+        const safe = base.replace(/[\\/:*?"<>|]/g, ' ').replace(/\s+/g, '-').slice(0, 60);
+        return `${safe || 'markdown'}.png`;
+      }
+
+      function fillDemo() {
+        const demo = `# Markdown → PNG\n\n支持 **GFM**、表格、列表、引用与代码块：\n\n> 一段引用文字。\n\n- 列表项 A\n- 列表项 B\n\n| 列 | 值 |\n| --- | --- |\n| A | 123 |\n| B | 456 |\n\n代码块：\n\n\`\`\`ts\nfunction greet(name: string) {\n  console.log('Hello, ' + name);\n}\nfor (const n of ['Alice', '张三']) greet(n);\n\`\`\`\n`;
+        mdInput.value = demo;
+        if (!authorInput.value) authorInput.value = '张三';
+        render();
+      }
+
+      // Event bindings
+      mdInput.addEventListener('input', render);
+      authorInput.addEventListener('input', () => updateMetadata(mdInput.value));
+      dateInput.addEventListener('input', () => updateMetadata(mdInput.value));
+      showAuthor.addEventListener('change', () => updateMetadata(mdInput.value));
+      showDate.addEventListener('change', () => updateMetadata(mdInput.value));
+      showWords.addEventListener('change', () => updateMetadata(mdInput.value));
+      widthInput.addEventListener('input', applyExportStyles);
+      paddingInput.addEventListener('input', applyExportStyles);
+      themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+      btnGenerate.addEventListener('click', (e) => { e.preventDefault(); generateAndDownload(); });
+      btnCopy.addEventListener('click', (e) => { e.preventDefault(); copyToClipboard(); });
+      btnFillDemo.addEventListener('click', (e) => { e.preventDefault(); fillDemo(); });
+
+      // Initial render
+      applyTheme(themeSelect ? themeSelect.value : 'light-soft');
+      applyExportStyles();
+      render();
+    </script>
+  </body>
+  </html>
+
