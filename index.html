@@ -110,12 +110,11 @@
             </select>
           </div>
           <div>
-            <label class="block text-sm text-slate-600">图片宽度（px）</label>
-            <input id="img-width" type="number" min="400" step="10" value="1000" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500" />
-          </div>
-          <div>
-            <label class="block text-sm text-slate-600">边距（px）</label>
-            <input id="img-padding" type="number" min="0" step="2" value="24" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500" />
+            <label class="block text-sm text-slate-600">输出尺寸</label>
+            <select id="size" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500">
+              <option value="web" selected>网页端（1920px）</option>
+              <option value="mobile">手机端（1206px，文字 2x 缩放）</option>
+            </select>
           </div>
           <div class="sm:col-span-2 flex flex-wrap gap-3">
             <button id="btn-generate" class="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2">生成 PNG</button>
@@ -166,8 +165,7 @@
       const showAuthor = $('#show-author');
       const showDate = $('#show-date');
       const showWords = $('#show-words');
-      const widthInput = $('#img-width');
-      const paddingInput = $('#img-padding');
+      const sizeSelect = document.getElementById('size');
       const btnGenerate = $('#btn-generate');
       const btnCopy = $('#btn-copy');
       const btnDownload = $('#btn-download');
@@ -293,24 +291,43 @@
         updateMetadata(raw);
       }
 
+      function getPreset() {
+        const v = (sizeSelect && sizeSelect.value) || 'web';
+        if (v === 'mobile') {
+          // 手机端：1206px 宽度；渲染时将根字体大小临时调至 32px（文字 2x）
+          return { width: 1206, padding: 16, fontRootPx: 32 };
+        }
+        // 网页端：1920px 宽度；根字体大小保持 16px
+        return { width: 1920, padding: 24, fontRootPx: 16 };
+      }
+
       function applyExportStyles() {
-        const width = Math.max(400, Number(widthInput.value || 1000));
-        const pad = Math.max(0, Number(paddingInput.value || 24));
-        surface.style.width = width + 'px';
-        paddingBox.style.padding = pad + 'px';
+        const preset = getPreset();
+        surface.style.width = preset.width + 'px';
+        paddingBox.style.padding = (preset.padding || 24) + 'px';
       }
 
       async function generatePngBlob() {
-        applyExportStyles();
-        await new Promise((r) => setTimeout(r, 30));
-        const pixelRatio = Math.min(3, Math.max(1, Math.round(window.devicePixelRatio || 2)));
-        const width = surface.offsetWidth;
-        const height = surface.offsetHeight;
-        const opts = { pixelRatio, width, height, style: { transform: 'none' }, cacheBust: true };
-        if (currentTheme && currentTheme.bgColorOnly) {
-          opts.backgroundColor = currentTheme.bgColorOnly;
+        const preset = getPreset();
+        // 临时调整根字体大小，使 rem 单位按预设缩放（仅导出过程生效）
+        const originalRootFontSize = document.documentElement.style.fontSize;
+        if (preset.fontRootPx) {
+          document.documentElement.style.fontSize = preset.fontRootPx + 'px';
         }
-        return await htmlToImage.toBlob(surface, opts);
+        try {
+          applyExportStyles();
+          await new Promise((r) => setTimeout(r, 30));
+          const width = surface.offsetWidth;
+          const height = surface.offsetHeight;
+          const opts = { pixelRatio: 1, width, height, style: { transform: 'none' }, cacheBust: true };
+          if (currentTheme && currentTheme.bgColorOnly) {
+            opts.backgroundColor = currentTheme.bgColorOnly;
+          }
+          return await htmlToImage.toBlob(surface, opts);
+        } finally {
+          // 还原根字体大小，避免影响界面
+          document.documentElement.style.fontSize = originalRootFontSize || '';
+        }
       }
 
       async function generateAndDownload() {
@@ -374,8 +391,7 @@
       showAuthor.addEventListener('change', () => updateMetadata(mdInput.value));
       showDate.addEventListener('change', () => updateMetadata(mdInput.value));
       showWords.addEventListener('change', () => updateMetadata(mdInput.value));
-      widthInput.addEventListener('input', applyExportStyles);
-      paddingInput.addEventListener('input', applyExportStyles);
+      if (sizeSelect) sizeSelect.addEventListener('change', applyExportStyles);
       themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
       btnGenerate.addEventListener('click', (e) => { e.preventDefault(); generateAndDownload(); });
       btnCopy.addEventListener('click', (e) => { e.preventDefault(); copyToClipboard(); });
@@ -388,4 +404,3 @@
     </script>
   </body>
   </html>
-
