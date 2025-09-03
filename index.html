@@ -46,7 +46,13 @@
       :root { --code-bg: #f5f7ff; --code-fg: #1f2937; --code-border: #e5e7eb; }
       .prose pre { background-color: var(--code-bg); border: 1px solid var(--code-border); border-radius: 0.5rem; }
       .prose pre code { background: transparent; color: var(--code-fg); }
-    </style>
+    
+      /* Mobile overflow fix */
+      html, body { max-width: 100%; overflow-x: hidden; }
+      #export-surface { width: 100% !important; max-width: 100% !important; transform-origin: top left; }
+      .prose pre, .prose table { max-width: 100%; overflow-x: auto; }
+      .prose pre code { white-space: pre-wrap; word-break: break-word; }
+</style>
   </head>
   <body class="min-h-screen bg-slate-50 text-slate-800">
     <header class="sticky top-0 z-10 bg-white/80 backdrop-blur border-b border-slate-200">
@@ -307,7 +313,6 @@
 
       function applyExportStyles() {
         const preset = getPreset();
-        surface.style.width = preset.width + 'px';
         const basePad = (preset.padding || 24);
         if (sizeSelect && sizeSelect.value === 'mobile') {
           // 手机端：左右间距加倍
@@ -315,13 +320,15 @@
         } else {
           paddingBox.style.padding = basePad + 'px';
         }
+        // 应用尺寸变化后，立即重算预览缩放，避免容器宽度判断滞后
+        updatePreviewScale();
       }
 
       // Scale preview to fit container width (no horizontal overflow)
       function updatePreviewScale() {
         if (!surface || !wrapper) return;
-        const container = wrapper.parentElement; // overflow container
-        const containerWidth = container ? container.clientWidth : surface.parentElement?.clientWidth || 0;
+        // 使用 wrapper 自身的可用宽度，更可靠地反映当前布局
+        const containerWidth = Math.floor(wrapper.clientWidth || wrapper.getBoundingClientRect().width || 0);
         const w = surface.offsetWidth || parseInt(surface.style.width || '0', 10) || 0;
         if (!w || !containerWidth) return;
         const scale = Math.min(1, containerWidth / w);
@@ -335,6 +342,8 @@
         const preset = getPreset();
         // 临时调整根字体大小，使 rem 单位按预设缩放（仅导出过程生效）
         const originalRootFontSize = document.documentElement.style.fontSize;
+        const originalSurfaceWidth = surface.style.width;
+        surface.style.width = preset.width + 'px';
         if (preset.fontRootPx) {
           document.documentElement.style.fontSize = preset.fontRootPx + 'px';
         }
@@ -351,6 +360,7 @@
         } finally {
           // 还原根字体大小，避免影响界面
           document.documentElement.style.fontSize = originalRootFontSize || '';
+          surface.style.width = originalSurfaceWidth || '';
         }
       }
 
