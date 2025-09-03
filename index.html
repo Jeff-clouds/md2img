@@ -69,8 +69,8 @@
           </div>
         </div>
 
-        <div class="bg-white rounded-xl border border-slate-200 p-4 grid gap-4 sm:grid-cols-2">
-          <div class="col-span-2">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 grid grid-cols-1 gap-4">
+          <div>
             <h2 class="text-sm font-medium text-slate-700">定制信息</h2>
           </div>
           <div>
@@ -96,8 +96,8 @@
           </div>
         </div>
 
-        <div class="bg-white rounded-xl border border-slate-200 p-4 grid gap-4 sm:grid-cols-2">
-          <div class="col-span-2">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 grid grid-cols-1 gap-4">
+          <div>
             <h2 class="text-sm font-medium text-slate-700">导出设置</h2>
           </div>
           <div>
@@ -116,12 +116,12 @@
               <option value="mobile">手机端（1206px，文字 2x 缩放）</option>
             </select>
           </div>
-          <div class="sm:col-span-2 flex flex-wrap gap-3">
+          <div class="flex flex-wrap gap-3">
             <button id="btn-generate" class="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2">生成 PNG</button>
             <button id="btn-copy" class="inline-flex items-center gap-2 rounded-lg bg-slate-700 hover:bg-slate-800 text-white px-4 py-2">复制到剪贴板</button>
             <a id="btn-download" class="inline-flex items-center gap-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2" download="markdown.png" href="#">下载 PNG</a>
           </div>
-          <div class="sm:col-span-2 text-xs text-slate-500">
+          <div class="text-xs text-slate-500">
             说明：复制到剪贴板功能需要 HTTPS 或浏览器权限；若失败请改用下载。
           </div>
         </div>
@@ -131,8 +131,8 @@
       <section aria-label="预览与导出">
         <div class="bg-white rounded-xl border border-slate-200 p-4">
           <div class="text-sm font-medium text-slate-700 mb-3">导出预览</div>
-          <div class="overflow-auto">
-            <div id="export-surface-wrapper" class="mx-auto">
+          <div class="overflow-x-hidden">
+            <div id="export-surface-wrapper" class="mx-auto max-w-full">
               <div id="export-surface" class="export-shadow mx-auto rounded-xl">
                 <div id="export-padding" class="p-6">
                   <div id="meta" class="flex flex-wrap items-center justify-between text-sm text-slate-500">
@@ -269,6 +269,8 @@
         meta.style.color = t.dark ? '#94a3b8' : '#64748b';
         applyExportStyles();
         render();
+        // 主题切换可能影响字号/行高，显式重算预览缩放
+        updatePreviewScale();
       }
 
       function updateMetadata(text) {
@@ -279,6 +281,7 @@
         metaAuthor.classList.toggle('hidden', !showAuthor.checked || !authorInput.value);
         metaDate.classList.toggle('hidden', !showDate.checked || !dateInput.value);
         metaWords.classList.toggle('hidden', !showWords.checked);
+        updatePreviewScale();
       }
 
       function render() {
@@ -289,6 +292,7 @@
           try { hljs.highlightElement(el); } catch (e) {}
         });
         updateMetadata(raw);
+        updatePreviewScale();
       }
 
       function getPreset() {
@@ -304,7 +308,27 @@
       function applyExportStyles() {
         const preset = getPreset();
         surface.style.width = preset.width + 'px';
-        paddingBox.style.padding = (preset.padding || 24) + 'px';
+        const basePad = (preset.padding || 24);
+        if (sizeSelect && sizeSelect.value === 'mobile') {
+          // 手机端：左右间距加倍
+          paddingBox.style.padding = basePad + 'px ' + (basePad * 2) + 'px';
+        } else {
+          paddingBox.style.padding = basePad + 'px';
+        }
+      }
+
+      // Scale preview to fit container width (no horizontal overflow)
+      function updatePreviewScale() {
+        if (!surface || !wrapper) return;
+        const container = wrapper.parentElement; // overflow container
+        const containerWidth = container ? container.clientWidth : surface.parentElement?.clientWidth || 0;
+        const w = surface.offsetWidth || parseInt(surface.style.width || '0', 10) || 0;
+        if (!w || !containerWidth) return;
+        const scale = Math.min(1, containerWidth / w);
+        surface.style.transformOrigin = 'top left';
+        surface.style.transform = scale < 1 ? `scale(${scale})` : 'none';
+        const h = surface.offsetHeight;
+        wrapper.style.height = scale < 1 ? Math.ceil(h * scale) + 'px' : '';
       }
 
       async function generatePngBlob() {
@@ -391,8 +415,17 @@
       showAuthor.addEventListener('change', () => updateMetadata(mdInput.value));
       showDate.addEventListener('change', () => updateMetadata(mdInput.value));
       showWords.addEventListener('change', () => updateMetadata(mdInput.value));
-      if (sizeSelect) sizeSelect.addEventListener('change', applyExportStyles);
+      if (sizeSelect) sizeSelect.addEventListener('change', () => { applyExportStyles(); updatePreviewScale(); });
       themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+      // 窗口尺寸变化，使用 rAF 节流避免频繁回流
+      let __resizeRaf = 0;
+      window.addEventListener('resize', () => {
+        if (__resizeRaf) cancelAnimationFrame(__resizeRaf);
+        __resizeRaf = requestAnimationFrame(() => {
+          __resizeRaf = 0;
+          updatePreviewScale();
+        });
+      });
       btnGenerate.addEventListener('click', (e) => { e.preventDefault(); generateAndDownload(); });
       btnCopy.addEventListener('click', (e) => { e.preventDefault(); copyToClipboard(); });
       btnFillDemo.addEventListener('click', (e) => { e.preventDefault(); fillDemo(); });
@@ -401,6 +434,7 @@
       applyTheme(themeSelect ? themeSelect.value : 'light-soft');
       applyExportStyles();
       render();
+      updatePreviewScale();
     </script>
   </body>
   </html>
