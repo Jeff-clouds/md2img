@@ -49,6 +49,7 @@
     
       /* Mobile overflow fix */
       html, body { max-width: 100%; overflow-x: hidden; }
+      /* 预览阶段占满容器，避免手机端横向溢出；导出阶段由 JS 临时强制宽度 */
       #export-surface { width: 100% !important; max-width: 100% !important; transform-origin: top left; }
       .prose pre, .prose table { max-width: 100%; overflow-x: auto; }
       .prose pre code { white-space: pre-wrap; word-break: break-word; }
@@ -314,6 +315,10 @@
       function applyExportStyles() {
         const preset = getPreset();
         const basePad = (preset.padding || 24);
+        // Ensure preview/export base width follows the selected preset
+        if (surface) {
+          surface.style.width = (preset.width || 1920) + 'px';
+        }
         if (sizeSelect && sizeSelect.value === 'mobile') {
           // 手机端：左右间距加倍
           paddingBox.style.padding = basePad + 'px ' + (basePad * 2) + 'px';
@@ -342,13 +347,20 @@
         const preset = getPreset();
         // 临时调整根字体大小，使 rem 单位按预设缩放（仅导出过程生效）
         const originalRootFontSize = document.documentElement.style.fontSize;
-        const originalSurfaceWidth = surface.style.width;
-        surface.style.width = preset.width + 'px';
+        // 记录并强制导出宽度：覆盖预览阶段的 100% !important / max-width:100% !important
+        const prevWidth = surface.style.getPropertyValue('width');
+        const prevWidthPriority = surface.style.getPropertyPriority('width');
+        const prevMaxWidth = surface.style.getPropertyValue('max-width');
+        const prevMaxWidthPriority = surface.style.getPropertyPriority('max-width');
+        const prevTransform = surface.style.transform;
+        surface.style.setProperty('width', preset.width + 'px', 'important');
+        surface.style.setProperty('max-width', 'none', 'important');
+        surface.style.transform = 'none';
         if (preset.fontRootPx) {
           document.documentElement.style.fontSize = preset.fontRootPx + 'px';
         }
         try {
-          applyExportStyles();
+          // 等待布局稳定
           await new Promise((r) => setTimeout(r, 30));
           const width = surface.offsetWidth;
           const height = surface.offsetHeight;
@@ -358,9 +370,13 @@
           }
           return await htmlToImage.toBlob(surface, opts);
         } finally {
-          // 还原根字体大小，避免影响界面
+          // 还原样式，回到预览逻辑
           document.documentElement.style.fontSize = originalRootFontSize || '';
-          surface.style.width = originalSurfaceWidth || '';
+          if (prevWidth) surface.style.setProperty('width', prevWidth, prevWidthPriority ? 'important' : '');
+          else surface.style.removeProperty('width');
+          if (prevMaxWidth) surface.style.setProperty('max-width', prevMaxWidth, prevMaxWidthPriority ? 'important' : '');
+          else surface.style.removeProperty('max-width');
+          surface.style.transform = prevTransform || '';
         }
       }
 
