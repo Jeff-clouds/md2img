@@ -189,6 +189,44 @@
       const dd = String(today.getDate()).padStart(2, '0');
       dateInput.value = `${yyyy}-${mm}-${dd}`;
 
+      // Persist settings in localStorage
+      const LS_KEY = 'md2png:prefs:v1';
+      function savePrefs() {
+        try {
+          const prefs = {
+            author: authorInput.value || '',
+            date: dateInput.value || '',
+            showAuthor: !!showAuthor.checked,
+            showDate: !!showDate.checked,
+            showWords: !!showWords.checked,
+            theme: themeSelect ? themeSelect.value : 'gradient-light',
+            size: sizeSelect ? sizeSelect.value : 'web',
+          };
+          localStorage.setItem(LS_KEY, JSON.stringify(prefs));
+        } catch (e) {
+          // ignore persistence errors
+        }
+      }
+
+      function loadPrefs() {
+        try {
+          const raw = localStorage.getItem(LS_KEY);
+          if (!raw) return;
+          const p = JSON.parse(raw);
+          if (p && typeof p === 'object') {
+            if (typeof p.author === 'string') authorInput.value = p.author;
+            if (typeof p.date === 'string' && p.date) dateInput.value = p.date; // keep today if empty
+            if (typeof p.showAuthor === 'boolean') showAuthor.checked = p.showAuthor;
+            if (typeof p.showDate === 'boolean') showDate.checked = p.showDate;
+            if (typeof p.showWords === 'boolean') showWords.checked = p.showWords;
+            if (p.theme && THEMES[p.theme]) themeSelect.value = p.theme;
+            if (sizeSelect && (p.size === 'web' || p.size === 'mobile')) sizeSelect.value = p.size;
+          }
+        } catch (e) {
+          // ignore bad JSON or access issues
+        }
+      }
+
       // Configure marked + highlight.js
       marked.setOptions({
         gfm: true,
@@ -397,19 +435,20 @@
 
       // Event bindings
       mdInput.addEventListener('input', render);
-      authorInput.addEventListener('input', () => updateMetadata(mdInput.value));
-      dateInput.addEventListener('input', () => updateMetadata(mdInput.value));
-      showAuthor.addEventListener('change', () => updateMetadata(mdInput.value));
-      showDate.addEventListener('change', () => updateMetadata(mdInput.value));
-      showWords.addEventListener('change', () => updateMetadata(mdInput.value));
-      if (sizeSelect) sizeSelect.addEventListener('change', () => { applyExportStyles(); });
-      themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
+      authorInput.addEventListener('input', () => { updateMetadata(mdInput.value); savePrefs(); });
+      dateInput.addEventListener('input', () => { updateMetadata(mdInput.value); savePrefs(); });
+      showAuthor.addEventListener('change', () => { updateMetadata(mdInput.value); savePrefs(); });
+      showDate.addEventListener('change', () => { updateMetadata(mdInput.value); savePrefs(); });
+      showWords.addEventListener('change', () => { updateMetadata(mdInput.value); savePrefs(); });
+      if (sizeSelect) sizeSelect.addEventListener('change', () => { applyExportStyles(); savePrefs(); });
+      themeSelect.addEventListener('change', () => { applyTheme(themeSelect.value); savePrefs(); });
       // 预览已移除：不再监听窗口尺寸变化调整缩放
       btnGenerate.addEventListener('click', (e) => { e.preventDefault(); generateAndDownload(); });
       btnCopy.addEventListener('click', (e) => { e.preventDefault(); copyToClipboard(); });
-      btnFillDemo.addEventListener('click', (e) => { e.preventDefault(); fillDemo(); });
+      btnFillDemo.addEventListener('click', (e) => { e.preventDefault(); fillDemo(); savePrefs(); });
 
       // Initial render
+      loadPrefs();
       applyTheme(themeSelect ? themeSelect.value : 'gradient-light');
       applyExportStyles();
       render();
