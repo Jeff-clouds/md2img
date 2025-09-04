@@ -49,8 +49,9 @@
     
       /* Mobile overflow fix */
       html, body { max-width: 100%; overflow-x: hidden; }
-      /* 预览阶段占满容器，避免手机端横向溢出；导出阶段由 JS 临时强制宽度 */
-      #export-surface { width: 100% !important; max-width: 100% !important; transform-origin: top left; }
+      /* 取消可视预览：保留导出容器但不强制占满容器宽度，
+         导出时由 JS 强制像素宽度并移除缩放 */
+      #export-surface { transform-origin: top left; }
       .prose pre, .prose table { max-width: 100%; overflow-x: auto; }
       .prose pre code { white-space: pre-wrap; word-break: break-word; }
 </style>
@@ -63,15 +64,14 @@
       </div>
     </header>
 
-    <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 grid gap-6 lg:grid-cols-2">
+    <main class="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8 py-6 grid gap-6">
       <!-- Left: Controls -->
       <section aria-label="输入与设置" class="space-y-4">
         <div class="bg-white rounded-xl border border-slate-200 p-4 space-y-3">
           <label for="md-input" class="block text-sm font-medium text-slate-700">Markdown 文本</label>
           <textarea id="md-input" class="w-full h-64 md:h-80 rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500 font-mono text-sm p-3" placeholder="# 欢迎使用\n\n- 支持 GFM\n- 代码块高亮\n- 数学公式可作为纯文本渲染\n\n```js\nconsole.log('Hello world');\n```\n"></textarea>
 
-          <div class="flex items-center justify-between">
-            <div class="text-xs text-slate-500">实时预览在右侧</div>
+          <div class="flex items-center justify-end">
             <button id="btn-fill-demo" class="text-xs text-brand-700 hover:text-brand-800">填充示例</button>
           </div>
         </div>
@@ -110,10 +110,8 @@
           <div>
             <label class="block text-sm text-slate-600">主题</label>
             <select id="theme" class="mt-1 w-full rounded-lg border-slate-300 focus:border-brand-500 focus:ring-brand-500">
-              <option value="light-soft" selected>轻质主题（亮色）</option>
-              <option value="github-dark">GitHub（暗色）</option>
+              <option value="gradient-light" selected>极浅渐变（浅色）</option>
               <option value="twitter-dark">Twitter（暗色）</option>
-              <option value="gradient-light">极浅渐变（浅色）</option>
             </select>
           </div>
           <div>
@@ -126,31 +124,28 @@
           <div class="flex flex-wrap gap-3">
             <button id="btn-generate" class="inline-flex items-center gap-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white px-4 py-2">生成 PNG</button>
             <button id="btn-copy" class="inline-flex items-center gap-2 rounded-lg bg-slate-700 hover:bg-slate-800 text-white px-4 py-2">复制到剪贴板</button>
-            <a id="btn-download" class="inline-flex items-center gap-2 rounded-lg bg-slate-200 hover:bg-slate-300 text-slate-800 px-4 py-2" download="markdown.png" href="#">下载 PNG</a>
           </div>
           <div class="text-xs text-slate-500">
-            说明：复制到剪贴板功能需要 HTTPS 或浏览器权限；若失败请改用下载。
+            说明：复制到剪贴板功能需要 HTTPS 或浏览器权限；若失败请点击“生成 PNG”下载。
           </div>
         </div>
       </section>
 
       <!-- Right: Preview / export area -->
-      <section aria-label="预览与导出">
-        <div class="bg-white rounded-xl border border-slate-200 p-4">
-          <div class="text-sm font-medium text-slate-700 mb-3">导出预览</div>
-          <div class="overflow-x-hidden">
-            <div id="export-surface-wrapper" class="mx-auto max-w-full">
-              <div id="export-surface" class="export-shadow mx-auto rounded-xl">
-                <div id="export-padding" class="p-6">
-                  <div id="meta" class="flex flex-wrap items-center justify-between text-sm text-slate-500">
-                    <div id="meta-left" class="flex items-center gap-4">
-                      <span id="meta-author" class="hidden"></span>
-                      <span id="meta-date" class="hidden"></span>
-                      <span id="meta-words" class="hidden"></span>
-                    </div>
+      <!-- Hidden export surface: no visible preview -->
+      <section aria-hidden="true">
+        <div class="p-4" style="position:absolute; left:-10000px; top:0; width:auto; height:auto; overflow:visible; opacity:0; pointer-events:none;">
+          <div id="export-surface-wrapper" class="mx-auto max-w-full">
+            <div id="export-surface" class="export-shadow mx-auto rounded-xl">
+              <div id="export-padding" class="p-6">
+                <div id="meta" class="flex flex-wrap items-center justify-between text-sm text-slate-500">
+                  <div id="meta-left" class="flex items-center gap-4">
+                    <span id="meta-author" class="hidden"></span>
+                    <span id="meta-date" class="hidden"></span>
+                    <span id="meta-words" class="hidden"></span>
                   </div>
-                  <article id="rendered" class="prose prose-slate max-w-none mt-4"></article>
                 </div>
+                <article id="rendered" class="prose prose-slate max-w-none mt-4"></article>
               </div>
             </div>
           </div>
@@ -175,12 +170,10 @@
       const sizeSelect = document.getElementById('size');
       const btnGenerate = $('#btn-generate');
       const btnCopy = $('#btn-copy');
-      const btnDownload = $('#btn-download');
       const btnFillDemo = $('#btn-fill-demo');
       const themeSelect = $('#theme');
       const hljsLink = document.getElementById('hljs-theme');
 
-      const wrapper = $('#export-surface-wrapper');
       const surface = $('#export-surface');
       const paddingBox = $('#export-padding');
       const rendered = $('#rendered');
@@ -216,24 +209,6 @@
 
       // Themes
       const THEMES = {
-        'light-soft': {
-          hljs: 'atom-one-light.min.css',
-          codeBg: '#f5f7ff',
-          codeFg: '#1f2937',
-          codeBorder: '#e5e7eb',
-          surface: { backgroundColor: '#f8fafc' },
-          bgColorOnly: '#f8fafc',
-          dark: false,
-        },
-        'github-dark': {
-          hljs: 'github-dark.min.css',
-          codeBg: '#161b22',  // slightly lighter than surface for separation
-          codeFg: '#c9d1d9',
-          codeBorder: '#30363d',
-          surface: { backgroundColor: '#0d1117' },
-          bgColorOnly: '#0d1117',
-          dark: true,
-        },
         'twitter-dark': {
           hljs: 'atom-one-dark.min.css',
           codeBg: '#1a1f24',  // lighter than twitter dark surface
@@ -254,9 +229,9 @@
         },
       };
 
-      let currentTheme = THEMES['light-soft'];
+      let currentTheme = THEMES['gradient-light'];
       function applyTheme(name) {
-        const t = THEMES[name] || THEMES['light-soft'];
+        const t = THEMES[name] || THEMES['gradient-light'];
         currentTheme = t;
         if (hljsLink) {
           hljsLink.href = `https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/${t.hljs}`;
@@ -276,8 +251,6 @@
         meta.style.color = t.dark ? '#94a3b8' : '#64748b';
         applyExportStyles();
         render();
-        // 主题切换可能影响字号/行高，显式重算预览缩放
-        updatePreviewScale();
       }
 
       function updateMetadata(text) {
@@ -288,7 +261,6 @@
         metaAuthor.classList.toggle('hidden', !showAuthor.checked || !authorInput.value);
         metaDate.classList.toggle('hidden', !showDate.checked || !dateInput.value);
         metaWords.classList.toggle('hidden', !showWords.checked);
-        updatePreviewScale();
       }
 
       function render() {
@@ -299,7 +271,6 @@
           try { hljs.highlightElement(el); } catch (e) {}
         });
         updateMetadata(raw);
-        updatePreviewScale();
       }
 
       function getPreset() {
@@ -325,29 +296,16 @@
         } else {
           paddingBox.style.padding = basePad + 'px';
         }
-        // 应用尺寸变化后，立即重算预览缩放，避免容器宽度判断滞后
-        updatePreviewScale();
+        // 取消预览缩放逻辑
       }
 
-      // Scale preview to fit container width (no horizontal overflow)
-      function updatePreviewScale() {
-        if (!surface || !wrapper) return;
-        // 使用 wrapper 自身的可用宽度，更可靠地反映当前布局
-        const containerWidth = Math.floor(wrapper.clientWidth || wrapper.getBoundingClientRect().width || 0);
-        const w = surface.offsetWidth || parseInt(surface.style.width || '0', 10) || 0;
-        if (!w || !containerWidth) return;
-        const scale = Math.min(1, containerWidth / w);
-        surface.style.transformOrigin = 'top left';
-        surface.style.transform = scale < 1 ? `scale(${scale})` : 'none';
-        const h = surface.offsetHeight;
-        wrapper.style.height = scale < 1 ? Math.ceil(h * scale) + 'px' : '';
-      }
+      // 预览已移除：不再需要缩放逻辑
 
       async function generatePngBlob() {
         const preset = getPreset();
         // 临时调整根字体大小，使 rem 单位按预设缩放（仅导出过程生效）
         const originalRootFontSize = document.documentElement.style.fontSize;
-        // 记录并强制导出宽度：覆盖预览阶段的 100% !important / max-width:100% !important
+        // 记录并强制导出宽度
         const prevWidth = surface.style.getPropertyValue('width');
         const prevWidthPriority = surface.style.getPropertyPriority('width');
         const prevMaxWidth = surface.style.getPropertyValue('max-width');
@@ -387,9 +345,12 @@
           const blob = await generatePngBlob();
           if (!blob) throw new Error('生成失败');
           const url = URL.createObjectURL(blob);
-          btnDownload.href = url;
-          btnDownload.download = makeFilename();
-          btnDownload.click();
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = makeFilename();
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
           setTimeout(() => URL.revokeObjectURL(url), 30000);
         } catch (err) {
           alert('生成 PNG 失败：' + (err && err.message ? err.message : err));
@@ -441,26 +402,18 @@
       showAuthor.addEventListener('change', () => updateMetadata(mdInput.value));
       showDate.addEventListener('change', () => updateMetadata(mdInput.value));
       showWords.addEventListener('change', () => updateMetadata(mdInput.value));
-      if (sizeSelect) sizeSelect.addEventListener('change', () => { applyExportStyles(); updatePreviewScale(); });
+      if (sizeSelect) sizeSelect.addEventListener('change', () => { applyExportStyles(); });
       themeSelect.addEventListener('change', () => applyTheme(themeSelect.value));
-      // 窗口尺寸变化，使用 rAF 节流避免频繁回流
-      let __resizeRaf = 0;
-      window.addEventListener('resize', () => {
-        if (__resizeRaf) cancelAnimationFrame(__resizeRaf);
-        __resizeRaf = requestAnimationFrame(() => {
-          __resizeRaf = 0;
-          updatePreviewScale();
-        });
-      });
+      // 预览已移除：不再监听窗口尺寸变化调整缩放
       btnGenerate.addEventListener('click', (e) => { e.preventDefault(); generateAndDownload(); });
       btnCopy.addEventListener('click', (e) => { e.preventDefault(); copyToClipboard(); });
       btnFillDemo.addEventListener('click', (e) => { e.preventDefault(); fillDemo(); });
 
       // Initial render
-      applyTheme(themeSelect ? themeSelect.value : 'light-soft');
+      applyTheme(themeSelect ? themeSelect.value : 'gradient-light');
       applyExportStyles();
       render();
-      updatePreviewScale();
+      // 无预览缩放
     </script>
   </body>
   </html>
